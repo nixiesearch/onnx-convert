@@ -35,7 +35,7 @@ options:
                         Whether to quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode (default: True)
   --no_reduce_range     Whether to quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode (default: False)
   --weight_type WEIGHT_TYPE
-                        Which underlying integer format should be used. Options are QInt8/QUInt8 (default: QUInt8)
+                        Which underlying integer format should be used. Options are QInt8/QUInt8/Float16 (default: QUInt8)
   --optimizer_level OPTIMIZER_LEVEL
                         ONNX optimizer level. Options are [0, 1, 2, 99] (default: 1)
 ```
@@ -84,6 +84,7 @@ This script was extended with the following features:
 * support for ONNX transformer optimization pass
 * selection of QUint8/QInt8 storage
 * using latest onnx/optimum versions (as for Nov 2023).
+* support for Automated Mixed Precision conversion to Float16.
 
 ## License
 

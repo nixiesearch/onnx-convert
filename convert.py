@@ -21,7 +21,7 @@ from onnxruntime.quantization import (
     QuantFormat
 )
 
-from onnxruntime.transformers import optimizer
+from onnxruntime.transformers import optimizer, float16
 
 # Based on xenova/transformers.js translation script.
 
@@ -96,7 +96,7 @@ class ConversionArguments:
     weight_type: str = field(
         default="QUInt8",
         metadata={
-            "help": "Which underlying integer format should be used. Options are QInt8/QUInt8"
+            "help": "Which underlying integer format should be used. Options are QInt8/QUInt8/Float16"
         }
     )
 
@@ -160,35 +160,43 @@ def quantize(model_names_or_paths, conv_args, **quantize_kwargs):
             optimized_model_file = f'{file_name_without_extension}_opt{conv_args.optimizer_level}.onnx'
             optimized_model.save_model_to_file(os.path.join(directory_path, optimized_model_file))
 
-            print(f'Optimization done, quantizing to {weight_type}')
+            print(f'Optimization done, quantizing to {conv_args.weight_type}')
             if conv_args.quantize:
-                quantized_file = f'{file_name_without_extension}_opt{conv_args.optimizer_level}_{weight_type}.onnx'
-                quantize_dynamic(
-                    model_input=os.path.join(directory_path, optimized_model_file),
-                    model_output=os.path.join(directory_path, quantized_file),
-                    weight_type=weight_type,
-                    extra_options=dict(
-                        EnableSubgraph=True
-                    ),
-                    **quantize_kwargs
-                )
+                quantized_file = f'{file_name_without_extension}_opt{conv_args.optimizer_level}_{conv_args.weight_type}.onnx'
+                quantize_impl(conv_args, directory_path, optimized_model_file, quantized_file, **quantize_kwargs)
             else:
                 print('Skipping quantization')
         else:
             print(f'No optimization enabled, quantizing to {weight_type}')
             if conv_args.quantize:
                 quantized_file = f'{file_name_without_extension}_opt0_{weight_type}.onnx'
-                quantize_dynamic(
-                    model_input=os.path.join(directory_path, f'{file_name_without_extension}.onnx'),
-                    model_output=os.path.join(directory_path, quantized_file),
-                    weight_type=weight_type,
-                    extra_options=dict(
-                        EnableSubgraph=True
-                    ),
-                    **quantize_kwargs
-                )
+                quantize_impl(conv_args, directory_path, optimized_model_file, quantized_file, **quantize_kwargs)
             else:
                 print('Skipping quantization')
+
+def quantize_impl(conv_args, directory_path, model_file, out_file, **quantize_kwargs):
+    if conv_args.weight_type in ["QUInt8", "QInt8"]:    
+        wt = QuantType.QUInt8
+
+        if conv_args.weight_type == "QUInt8":
+            wt = QuantType.QUInt8
+        elif conv_args.weight_type == "QInt8":
+            wt = QuantType.QInt8
+
+        quantize_dynamic(
+                        model_input=os.path.join(directory_path, model_file),
+                        model_output=os.path.join(directory_path, out_file),
+                        weight_type=wt,
+                        extra_options=dict(
+                            EnableSubgraph=True
+                        ),
+                        **quantize_kwargs
+                    )
+    elif conv_args.weight_type == "Float16":
+        model = onnx.load(os.path.join(directory_path, model_file))
+        model_fp16 = float16.convert_float_to_float16(model)
+        onnx.save(model_fp16, os.path.join(directory_path, out_file))
+    
 
 
 def main():
