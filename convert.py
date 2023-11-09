@@ -161,28 +161,34 @@ def quantize(model_names_or_paths, conv_args, **quantize_kwargs):
             optimized_model.save_model_to_file(os.path.join(directory_path, optimized_model_file))
 
             print(f'Optimization done, quantizing to {weight_type}')
-            quantized_file = f'{file_name_without_extension}_opt{conv_args.optimizer_level}_{weight_type}.onnx'
-            quantize_dynamic(
-                model_input=os.path.join(directory_path, optimized_model_file),
-                model_output=os.path.join(directory_path, quantized_file),
-                weight_type=weight_type,
-                extra_options=dict(
-                    EnableSubgraph=True
-                ),
-                **quantize_kwargs
-            )
+            if conv_args.quantize:
+                quantized_file = f'{file_name_without_extension}_opt{conv_args.optimizer_level}_{weight_type}.onnx'
+                quantize_dynamic(
+                    model_input=os.path.join(directory_path, optimized_model_file),
+                    model_output=os.path.join(directory_path, quantized_file),
+                    weight_type=weight_type,
+                    extra_options=dict(
+                        EnableSubgraph=True
+                    ),
+                    **quantize_kwargs
+                )
+            else:
+                print('Skipping quantization')
         else:
             print(f'No optimization enabled, quantizing to {weight_type}')
-            quantized_file = f'{file_name_without_extension}_opt0_{weight_type}.onnx'
-            quantize_dynamic(
-                model_input=os.path.join(directory_path, f'{file_name_without_extension}.onnx'),
-                model_output=os.path.join(directory_path, quantized_file),
-                weight_type=weight_type,
-                extra_options=dict(
-                    EnableSubgraph=True
-                ),
-                **quantize_kwargs
-            )
+            if conv_args.quantize:
+                quantized_file = f'{file_name_without_extension}_opt0_{weight_type}.onnx'
+                quantize_dynamic(
+                    model_input=os.path.join(directory_path, f'{file_name_without_extension}.onnx'),
+                    model_output=os.path.join(directory_path, quantized_file),
+                    weight_type=weight_type,
+                    extra_options=dict(
+                        EnableSubgraph=True
+                    ),
+                    **quantize_kwargs
+                )
+            else:
+                print('Skipping quantization')
 
 
 def main():
@@ -211,14 +217,13 @@ def main():
     
     print('Export done')
 
-    if conv_args.quantize:
-        quantize_config = {'per_channel': conv_args.per_channel, 'reduce_range': conv_args.reduce_range}
+    quantize_config = {'per_channel': conv_args.per_channel, 'reduce_range': conv_args.reduce_range}
 
-        quantize([
-            os.path.join(output_model_folder, x)
-            for x in os.listdir(output_model_folder)
-            if x.endswith('.onnx') and not x.endswith('_quantized.onnx')
-        ], conv_args, **quantize_config)
+    quantize([
+        os.path.join(output_model_folder, x)
+        for x in os.listdir(output_model_folder)
+        if x.endswith('.onnx')
+    ], conv_args, **quantize_config)
 
     # Step 3. Move .onnx files to the 'onnx' subfolder
     os.makedirs(os.path.join(output_model_folder, 'onnx'), exist_ok=True)
