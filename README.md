@@ -43,7 +43,7 @@ options:
 Example:
 
 ```
-$> python convert.py --model_id intfloat/e5-small-v2 --quantize true --opset 17 --optimizer_level 1
+$> python convert.py --model_id intfloat/e5-small-v2 --quantize true
 
 Conversion config: ConversionArguments(model_id='intfloat/e5-small-v2', quantize=True, output_parent_dir='./models/', task='sentence-similarity', opset=17, device='cpu', skip_validation=False, per_channel=True, reduce_range=True, weight_type='QUInt8', optimizer_level=1)
 Exporting model to ONNX
@@ -67,6 +67,14 @@ ONNX model loaded
 Optimizing model with level=1
 Optimization done, quantizing to QUInt8
 Done
+
+$> ls -l models/intfloat/e5-small-v2/onnx/
+
+total 292652
+-rw-r--r-- 1 shutty shutty 133093491 Nov  9 12:56 model.onnx
+-rw-r--r-- 1 shutty shutty 132878229 Nov  9 12:56 model_opt1.onnx
+-rw-r--r-- 1 shutty shutty  33685722 Nov  9 12:56 model_opt1_QUInt8.onnx
+
 ```
 
 ## Differences with the xenova/transformers.js
