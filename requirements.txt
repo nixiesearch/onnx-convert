@@ -1,0 +1,5 @@
+transformers[torch]==4.35.0
+onnxruntime==1.16.1
+optimum==1.14.0
+tqdm
+onnx==1.15.0
