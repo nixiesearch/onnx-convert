@@ -40,12 +40,42 @@ options:
                         ONNX optimizer level. Options are [0, 1, 2, 99] (default: 1)
 ```
 
+Example:
+
+```
+$> python convert.py --model_id intfloat/e5-small-v2 --quantize true --opset 17 --optimizer_level 1
+
+Conversion config: ConversionArguments(model_id='intfloat/e5-small-v2', quantize=True, output_parent_dir='./models/', task='sentence-similarity', opset=17, device='cpu', skip_validation=False, per_channel=True, reduce_range=True, weight_type='QUInt8', optimizer_level=1)
+Exporting model to ONNX
+Framework not specified. Using pt to export to ONNX.
+Using the export variant default. Available variants are:
+    - default: The default ONNX variant.
+Using framework PyTorch: 2.1.0+cu121
+Overriding 1 configuration item(s)
+        - use_cache -> False
+Post-processing the exported models...
+Deduplicating shared (tied) weights...
+Validating ONNX model models/intfloat/e5-small-v2/model.onnx...
+        -[✓] ONNX model output names match reference model (last_hidden_state)
+        - Validating ONNX Model output "last_hidden_state":
+                -[✓] (2, 16, 384) matches (2, 16, 384)
+                -[✓] all values close (atol: 0.0001)
+The ONNX export succeeded and the exported model was saved at: models/intfloat/e5-small-v2
+Export done
+Processing model file ./models/intfloat/e5-small-v2/model.onnx
+ONNX model loaded
+Optimizing model with level=1
+Optimization done, quantizing to QUInt8
+Done
+```
+
 ## Differences with the xenova/transformers.js
 
 This script was extended with the following features:
 
 * support for ONNX transformer optimization pass
 * selection of QUint8/QInt8 storage
+* using latest onnx/optimum versions (as for Nov 2023).
 
 ## License
 
