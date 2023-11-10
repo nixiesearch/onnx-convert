@@ -36,10 +36,10 @@ class ConversionArguments:
             "help": "Model identifier"
         }
     )
-    quantize: bool = field(
-        default=False,
+    quantize: Optional[str] = field(
+        default=None,
         metadata={
-            "help": "Whether to quantize the model."
+            "help": "To which format to quantize the model. Options are QInt8/QUInt8/Float16"
         }
     )
     output_parent_dir: str = field(
@@ -93,14 +93,7 @@ class ConversionArguments:
         }
     )
 
-    weight_type: str = field(
-        default="QUInt8",
-        metadata={
-            "help": "Which underlying integer format should be used. Options are QInt8/QUInt8/Float16"
-        }
-    )
-
-    optimizer_level: int = field(
+    optimize: int = field(
         default=1,
         metadata={
             "help": "ONNX optimizer level. Options are [0, 1, 2, 99]"
@@ -147,41 +140,37 @@ def quantize(model_names_or_paths, conv_args, **quantize_kwargs):
         loaded_model = onnx.load_model(model)
         print('ONNX model loaded')
         op_types = get_operators(loaded_model)
-        weight_type = QuantType.QUInt8
 
-        if conv_args.weight_type == "QUInt8":
-            weight_type = QuantType.QUInt8
-        elif conv_args.weight_type == "QInt8":
-            weight_type = QuantType.QInt8
-
-        if conv_args.optimizer_level > 0:
-            print(f'Optimizing model with level={conv_args.optimizer_level}')
-            optimized_model = optimizer.optimize_model(model, model_type='bert', opt_level=conv_args.optimizer_level)
-            optimized_model_file = f'{file_name_without_extension}_opt{conv_args.optimizer_level}.onnx'
+        if conv_args.optimize > 0:
+            print(f'Optimizing model with level={conv_args.optimize}')
+            optimized_model = optimizer.optimize_model(model, model_type='bert', opt_level=conv_args.optimize)
+            optimized_model_file = f'{file_name_without_extension}_opt{conv_args.optimize}_Float32.onnx'
             optimized_model.save_model_to_file(os.path.join(directory_path, optimized_model_file))
 
-            print(f'Optimization done, quantizing to {conv_args.weight_type}')
+            
             if conv_args.quantize:
-                quantized_file = f'{file_name_without_extension}_opt{conv_args.optimizer_level}_{conv_args.weight_type}.onnx'
+                print(f'Optimization done, quantizing to {conv_args.quantize}')
+                quantized_file = f'{file_name_without_extension}_opt{conv_args.optimize}_{conv_args.quantize}.onnx'
                 quantize_impl(conv_args, directory_path, optimized_model_file, quantized_file, **quantize_kwargs)
             else:
                 print('Skipping quantization')
         else:
-            print(f'No optimization enabled, quantizing to {weight_type}')
             if conv_args.quantize:
-                quantized_file = f'{file_name_without_extension}_opt0_{weight_type}.onnx'
-                quantize_impl(conv_args, directory_path, optimized_model_file, quantized_file, **quantize_kwargs)
+                print(f'No optimization enabled, quantizing to {conv_args.quantize}')
+                quantized_file = f'{file_name_without_extension}_opt0_{conv_args.quantize}.onnx'
+                quantize_impl(conv_args, directory_path, model, quantized_file, **quantize_kwargs)
             else:
                 print('Skipping quantization')
 
 def quantize_impl(conv_args, directory_path, model_file, out_file, **quantize_kwargs):
-    if conv_args.weight_type in ["QUInt8", "QInt8"]:    
+    if conv_args.quantize in ["QUInt8", "QInt8"]:    
         wt = QuantType.QUInt8
 
-        if conv_args.weight_type == "QUInt8":
+        if conv_args.quantize == "QUInt8":
             wt = QuantType.QUInt8
-        elif conv_args.weight_type == "QInt8":
+        elif conv_args.quantize == "QInt8":
             wt = QuantType.QInt8
+
 
         quantize_dynamic(
                         model_input=os.path.join(directory_path, model_file),
@@ -192,7 +181,7 @@ def quantize_impl(conv_args, directory_path, model_file, out_file, **quantize_kw
                         ),
                         **quantize_kwargs
                     )
-    elif conv_args.weight_type == "Float16":
+    elif conv_args.quantize == "Float16":
         model = onnx.load(os.path.join(directory_path, model_file))
         model_fp16 = float16.convert_float_to_float16(model)
         onnx.save(model_fp16, os.path.join(directory_path, out_file))
@@ -230,7 +219,7 @@ def main():
     quantize([
         os.path.join(output_model_folder, x)
         for x in os.listdir(output_model_folder)
-        if x.endswith('.onnx')
+        if x == 'model.onnx'
     ], conv_args, **quantize_config)
 
     # Step 3. Move .onnx files to the 'onnx' subfolder
