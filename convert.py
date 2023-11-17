@@ -5,7 +5,7 @@ import shutil
 from dataclasses import dataclass, field
 from typing import Optional, Set
 from tqdm import tqdm
-
+import numpy as np
 from transformers import (
     AutoConfig,
     AutoTokenizer,
@@ -17,11 +17,15 @@ from optimum.exporters.onnx import main_export, export_models
 from optimum.exporters.tasks import TasksManager
 from onnxruntime.quantization import (
     quantize_dynamic,
+    quantize_static,
     QuantType,
-    QuantFormat
+    QuantFormat,
+    CalibrationDataReader
 )
 
 from onnxruntime.transformers import optimizer, float16
+from tokenizers import Tokenizer
+import onnxruntime as ort
 
 # Based on xenova/transformers.js translation script.
 
@@ -100,6 +104,35 @@ class ConversionArguments:
         }
     )
 
+class CalibrationLoader(CalibrationDataReader):
+    def __init__(self, tokenizer, data):
+        tokenizer = Tokenizer.from_pretrained(tokenizer)
+        tokenizer.enable_truncation(max_length=256)
+        tokenizer.enable_padding(pad_id=0, pad_token="[PAD]", length=256)
+
+        self.batches = []
+        batch_size=32
+        for i in range(0, len(data), batch_size):
+            batch = data[i:i + batch_size]
+            encoded = [tokenizer.encode(d) for d in batch]
+            input_ids = np.array([e.ids for e in encoded])
+            attention_mask = np.array([e.attention_mask for e in encoded])
+            onnx_input = {
+                "input_ids": np.array(input_ids, dtype=np.int64),
+                "attention_mask": np.array(attention_mask, dtype=np.int64),
+                "token_type_ids": np.array([np.zeros(len(e), dtype=np.int64) for e in input_ids], dtype=np.int64),
+            }
+            self.batches.append(onnx_input)
+
+    def get_next(self):
+        print(f'next called - {len(self.batches)}')
+        if len(self.batches) == 0:
+            return None
+        else:
+            return self.batches.pop()
+
+
+
 def get_operators(model: onnx.ModelProto) -> Set[str]:
     operators = set()
 
@@ -158,7 +191,7 @@ def quantize(model_names_or_paths, conv_args, **quantize_kwargs):
             if conv_args.quantize:
                 print(f'No optimization enabled, quantizing to {conv_args.quantize}')
                 quantized_file = f'{file_name_without_extension}_opt0_{conv_args.quantize}.onnx'
-                quantize_impl(conv_args, directory_path, model, quantized_file, **quantize_kwargs)
+                quantize_impl(conv_args, directory_path, os.path.basename(model), quantized_file, **quantize_kwargs)
             else:
                 print('Skipping quantization')
 
@@ -185,7 +218,16 @@ def quantize_impl(conv_args, directory_path, model_file, out_file, **quantize_kw
         model = onnx.load(os.path.join(directory_path, model_file))
         model_fp16 = float16.convert_float_to_float16(model)
         onnx.save(model_fp16, os.path.join(directory_path, out_file))
-    
+    elif conv_args.quantize == "QInt8Static":
+        loader=CalibrationLoader('intfloat/e5-small-v2', ['foo', 'bar'])
+        quantize_static(
+            model_input=os.path.join(directory_path, model_file),
+            model_output=os.path.join(directory_path, out_file),
+            calibration_data_reader=loader,
+            quant_format=QuantFormat.QOperator,
+            weight_type=QuantType.QInt8,
+            **quantize_kwargs
+        )
 
 
 def main():
