@@ -26,6 +26,7 @@ from onnxruntime.quantization import (
 from onnxruntime.transformers import optimizer, float16
 from tokenizers import Tokenizer
 import onnxruntime as ort
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 # Based on xenova/transformers.js translation script.
 
@@ -63,7 +64,7 @@ class ConversionArguments:
     )
 
     opset: int = field(
-        default=None,
+        default=17,
         metadata={
             "help": (
                 "If specified, ONNX opset version to export the model with. Otherwise, the default opset will be used."
@@ -104,11 +105,21 @@ class ConversionArguments:
         }
     )
 
+    calibration_dataset: str = field(
+        default = None,
+        metadata={'help': 'file name for the calibration dataset. Only used for the QInt8Static quantization.'}
+    )
+
 class CalibrationLoader(CalibrationDataReader):
-    def __init__(self, tokenizer, data):
+    def __init__(self, tokenizer, file):
         tokenizer = Tokenizer.from_pretrained(tokenizer)
         tokenizer.enable_truncation(max_length=256)
         tokenizer.enable_padding(pad_id=0, pad_token="[PAD]", length=256)
+
+        data=[]
+        with open(file,'r') as f:
+            while line := f.readline():
+                data.append(line.rstrip())
 
         self.batches = []
         batch_size=32
@@ -125,7 +136,7 @@ class CalibrationLoader(CalibrationDataReader):
             self.batches.append(onnx_input)
 
     def get_next(self):
-        print(f'next called - {len(self.batches)}')
+        print(f'Calibrating - {len(self.batches)} batches left')
         if len(self.batches) == 0:
             return None
         else:
@@ -196,14 +207,19 @@ def quantize(model_names_or_paths, conv_args, **quantize_kwargs):
                 print('Skipping quantization')
 
 def quantize_impl(conv_args, directory_path, model_file, out_file, **quantize_kwargs):
-    if conv_args.quantize in ["QUInt8", "QInt8"]:    
-        wt = QuantType.QUInt8
+    model_path=os.path.join(directory_path, model_file)
+    model = SymbolicShapeInference.infer_shapes(
+                onnx.load(model_path),
+                int_max=2**31 - 1,
+                auto_merge=False,
+                guess_output_rank=False,
+                verbose=False,
+            )
+    onnx.save(model, model_path)
+    onnx.shape_inference.infer_shapes_path(model_path, model_path)
 
-        if conv_args.quantize == "QUInt8":
-            wt = QuantType.QUInt8
-        elif conv_args.quantize == "QInt8":
-            wt = QuantType.QInt8
-
+    if conv_args.quantize in ["QUInt8", "QInt8", "QFLOAT8E4M3FN"]:    
+        wt = QuantType[conv_args.quantize]
 
         quantize_dynamic(
                         model_input=os.path.join(directory_path, model_file),
@@ -218,8 +234,11 @@ def quantize_impl(conv_args, directory_path, model_file, out_file, **quantize_kw
         model = onnx.load(os.path.join(directory_path, model_file))
         model_fp16 = float16.convert_float_to_float16(model)
         onnx.save(model_fp16, os.path.join(directory_path, out_file))
+    
     elif conv_args.quantize == "QInt8Static":
-        loader=CalibrationLoader('intfloat/e5-small-v2', ['foo', 'bar'])
+        if conv_args.calibration_dataset == None:
+            raise Exception("calibration dataset missing")
+        loader=CalibrationLoader(conv_args.model_id, conv_args.calibration_dataset)
         quantize_static(
             model_input=os.path.join(directory_path, model_file),
             model_output=os.path.join(directory_path, out_file),
