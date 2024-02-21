@@ -1,6 +1,7 @@
-transformers[torch]==4.35.2
-onnxruntime==1.16.2
-optimum==1.14.1
+transformers[torch]==4.37.2
+onnxruntime==1.17.0
+optimum==1.17.1
 onnx==1.15.0
-tokenizers==0.15.0
+tokenizers==0.15.2
 pydot
+torch==2.2.0
