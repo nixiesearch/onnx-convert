@@ -69,6 +69,12 @@ class ConversionArguments:
         default=False,
         metadata={"help": "Whether to skip validation of the converted model"},
     )
+    skip_shape_inference: bool = field(
+        default=False,
+        metadata={
+            "help": "skip symbolic shape inference - helps with some models, assumes disabled optimization"
+        },
+    )
 
     per_channel: bool = field(
         default=True, metadata={"help": "Whether to quantize weights per channel"}
@@ -163,7 +169,7 @@ def quantize(model_names_or_paths, conv_args, **quantize_kwargs):
         print("ONNX model loaded")
         op_types = get_operators(loaded_model)
 
-        if conv_args.optimize > 0:
+        if conv_args.optimize > 0 and not conv_args.skip_shape_inference:
             print(f"Optimizing model with level={conv_args.optimize}")
             optimized_model = optimizer.optimize_model(
                 model, model_type="bert", opt_level=conv_args.optimize
@@ -206,15 +212,18 @@ def quantize(model_names_or_paths, conv_args, **quantize_kwargs):
 
 def quantize_impl(conv_args, directory_path, model_file, out_file, **quantize_kwargs):
     model_path = os.path.join(directory_path, model_file)
-    model = SymbolicShapeInference.infer_shapes(
-        onnx.load(model_path),
-        int_max=2**31 - 1,
-        auto_merge=True,
-        guess_output_rank=False,
-        verbose=True,
-    )
-    onnx.save(model, model_path)
-    onnx.shape_inference.infer_shapes_path(model_path, model_path)
+    if conv_args.skip_shape_inference:
+        model = onnx.load(model_path)
+    else:
+        model = SymbolicShapeInference.infer_shapes(
+            onnx.load(model_path),
+            int_max=2**31 - 1,
+            auto_merge=True,
+            guess_output_rank=False,
+            verbose=True,
+        )
+        onnx.save(model, model_path)
+        onnx.shape_inference.infer_shapes_path(model_path, model_path)
 
     if conv_args.quantize in ["QUInt8", "QInt8", "QFLOAT8E4M3FN"]:
         wt = QuantType[conv_args.quantize]
@@ -264,6 +273,9 @@ def main():
         opset=conv_args.opset,
         device=conv_args.device,
         do_validation=not conv_args.skip_validation,
+        trust_remote_code=True,
+        verbose=True,
+        model_kwargs={"attn_implementation": "eager"},
     )
     print("Exporting model to ONNX")
     main_export(**export_kwargs)
