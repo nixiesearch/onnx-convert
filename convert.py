@@ -212,9 +212,7 @@ def quantize(model_names_or_paths, conv_args, **quantize_kwargs):
 
 def quantize_impl(conv_args, directory_path, model_file, out_file, **quantize_kwargs):
     model_path = os.path.join(directory_path, model_file)
-    if conv_args.skip_shape_inference:
-        model = onnx.load(model_path)
-    else:
+    if not conv_args.skip_shape_inference:
         model = SymbolicShapeInference.infer_shapes(
             onnx.load(model_path),
             int_max=2**31 - 1,
@@ -277,7 +275,7 @@ def main():
         verbose=True,
         model_kwargs={"attn_implementation": "eager"},
     )
-    print("Exporting model to ONNX")
+    print(f"Exporting model to ONNX: {export_kwargs}")
     main_export(**export_kwargs)
 
     print("Export done")
